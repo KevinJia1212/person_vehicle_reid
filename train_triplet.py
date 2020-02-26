@@ -22,7 +22,7 @@ parser.add_argument("--gpu-id",default=0,type=int)
 parser.add_argument("--lr",default=0.1, type=float)
 parser.add_argument("--interval",'-i',default=5,type=int)
 parser.add_argument('--resume', '-r',action='store_true')
-parser.add_argument('--num_workers', default=0, type=int)
+parser.add_argument('--num_workers', default=8, type=int)
 parser.add_argument('--margin', default=1.2, type=float)
 args = parser.parse_args()
 
@@ -51,32 +51,32 @@ veri_root = args.veri_dir
 # test_path = os.path.join(dataset_root, "bounding_box_test")
 # query_path = os.path.join(dataset_root, "query")
 
-id_minibatch = 8
-train_path = os.path.join(veri_root, "image_train")
-test_path = os.path.join(veri_root, "image_test")
-query_path = os.path.join(veri_root, "image_query")
-veri_train = veri776.VeRi776(train_path, transform=transform_train, dataset_name="Veri Train")
-veri_test = veri776.VeRi776(test_path, transform=transform_test, dataset_name="Veri Test")
-veri_query = veri776.VeRi776(query_path, transform=transform_test, dataset_name="Veri Query")
-trainloader = torch.utils.data.DataLoader(veri_train, batch_size=512, sampler=sampler.RandomIdentitySampler(veri_train, id_minibatch), num_workers=args.num_workers)
-# trainloader = torch.utils.data.DataLoader(veri_train, batch_size=256, shuffle=True, num_workers=args.num_workers)
-testloader = torch.utils.data.DataLoader(veri_test, batch_size=256)
-queryloader = torch.utils.data.DataLoader(veri_query, batch_size=256)
+# id_minibatch = 8
+# train_path = os.path.join(veri_root, "image_train")
+# test_path = os.path.join(veri_root, "image_test")
+# query_path = os.path.join(veri_root, "image_query")
+# veri_train = veri776.VeRi776(train_path, transform=transform_train, dataset_name="Veri Train")
+# veri_test = veri776.VeRi776(test_path, transform=transform_test, dataset_name="Veri Test")
+# veri_query = veri776.VeRi776(query_path, transform=transform_test, dataset_name="Veri Query")
+# trainloader = torch.utils.data.DataLoader(veri_train, batch_size=512, sampler=sampler.RandomIdentitySampler(veri_train, id_minibatch), num_workers=args.num_workers)
+# # trainloader = torch.utils.data.DataLoader(veri_train, batch_size=256, shuffle=True, num_workers=args.num_workers)
+# testloader = torch.utils.data.DataLoader(veri_test, batch_size=256)
+# queryloader = torch.utils.data.DataLoader(veri_query, batch_size=256)
 
 # market_train = market1501.Market1501(train_path, transform=transform_train, dataset_name="Market Train")
 # market_test = market1501.Market1501(test_path, transform=transform_test, dataset_name="Market Test")
 # market_query = market1501.Market1501(query_path, transform=transform_test, dataset_name="Market Query")
 # market_test = Market1501(test_filenames, test_ids, transform=transform_test, dataset_name="Market Test")
-# data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
+data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 
-# trainloader = torch.utils.data.DataLoader(data.train, batch_size=512, shuffle=True, num_workers=args.num_workers)
-# testloader = torch.utils.data.DataLoader(data.test, batch_size=128)
-# queryloader = torch.utils.data.DataLoader(data.query, batch_size=128)
+trainloader = torch.utils.data.DataLoader(data.train, batch_size=512, shuffle=True, num_workers=args.num_workers)
+testloader = torch.utils.data.DataLoader(data.test, batch_size=256)
+queryloader = torch.utils.data.DataLoader(data.query, batch_size=256)
 
 
 
 # net definition
-num_classes = len(np.unique(veri_train.ids))
+num_classes = len(np.unique(data.train.ids))
 start_epoch = 1
 net = Net(num_classes=num_classes)
 if args.resume:
@@ -94,7 +94,7 @@ net.to(device)
 ce_loss = torch.nn.CrossEntropyLoss()
 trp_loss = triplet.TripletSemihardLoss(args.margin).cuda()
 optimizer = torch.optim.SGD(net.parameters(), args.lr, momentum=0.9, weight_decay=5e-3)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [  18, 35, 48, 85, 91], gamma=0.1)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [ 12, 24, 38, 54, 70, 80, 90, 100, 120, 140], gamma=0.1)
 best_acc = 0.
 
 # train function for each epoch
@@ -213,21 +213,21 @@ def eval(epoch):
     test = np.concatenate([net(inputs.to(device)).detach().cpu().numpy() for inputs, _ in testloader])
     dist = cdist(query, test)
 
-    r = eval_tools.cmc(dist, veri_query.ids, veri_test.ids, veri_query.cameras, veri_test.cameras,
+    r = eval_tools.cmc(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras,
             separate_camera_set=False,
             single_gallery_shot=False,
             first_match_break=True)
 
-    m_ap = eval_tools.mean_ap(dist,veri_query.ids, veri_test.ids, veri_query.cameras, veri_test.cameras)
+    m_ap = eval_tools.mean_ap(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras)
     print('epoch[%d]: mAP=%f, r@1=%f, r@3=%f, r@5=%f, r@10=%f' % (epoch + 1, m_ap, r[0], r[2], r[4], r[9]))
 
 
 def main():
-    for epoch in range(start_epoch, start_epoch+100):
+    for epoch in range(start_epoch, start_epoch+150):
         train_loss = train(epoch)
         scheduler.step()
         # test_loss, test_err = test(epoch)
-        if epoch % 4 == 0:
+        if epoch % 3 == 0:
             eval(epoch)
         if epoch % 50 == 0:
             print("Saving parameters to checkpoint/")
@@ -237,7 +237,7 @@ def main():
             }
             if not os.path.isdir('checkpoint'):
                 os.mkdir('checkpoint')
-            ckpt_path = "./checkpoint/ckpt_" + str(epoch) + ".t7" 
+            ckpt_path = "checkpoint/ckpt_" + str(epoch) + ".t7" 
             torch.save(checkpoint, ckpt_path)
         # draw_curve(epoch, train_loss, train_err, test_loss, test_err)
         # if (epoch+1)%10==0:
