@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/home/aistudio/external-libraries')
+
 import argparse
 import os
 import time
@@ -22,7 +25,7 @@ parser.add_argument("--gpu-id",default=0,type=int)
 parser.add_argument("--lr",default=0.1, type=float)
 parser.add_argument("--interval",'-i',default=5,type=int)
 parser.add_argument('--resume', '-r',action='store_true')
-parser.add_argument('--num_workers', default=8, type=int)
+parser.add_argument('--num_workers', default=0, type=int)
 parser.add_argument('--margin', default=1.2, type=float)
 args = parser.parse_args()
 
@@ -69,9 +72,9 @@ veri_root = args.veri_dir
 # market_test = Market1501(test_filenames, test_ids, transform=transform_test, dataset_name="Market Test")
 data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 
-trainloader = torch.utils.data.DataLoader(data.train, batch_size=512, shuffle=True, num_workers=args.num_workers)
-testloader = torch.utils.data.DataLoader(data.test, batch_size=256)
-queryloader = torch.utils.data.DataLoader(data.query, batch_size=256)
+trainloader = torch.utils.data.DataLoader(data.train, batch_size=2048, shuffle=True, num_workers=args.num_workers)
+testloader = torch.utils.data.DataLoader(data.test, batch_size=512)
+queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 
 
 
@@ -174,29 +177,6 @@ def test(epoch):
         torch.save(checkpoint, './checkpoint/ckpt.t7')
 
     return test_loss/len(testloader), 1.- correct/total
-
-# plot figure
-x_epoch = []
-record = {'train_loss':[], 'train_err':[], 'test_loss':[], 'test_err':[]}
-fig = plt.figure()
-ax0 = fig.add_subplot(121, title="loss")
-ax1 = fig.add_subplot(122, title="top1err")
-def draw_curve(epoch, train_loss, train_err, test_loss, test_err):
-    global record
-    record['train_loss'].append(train_loss)
-    record['train_err'].append(train_err)
-    record['test_loss'].append(test_loss)
-    record['test_err'].append(test_err)
-
-    x_epoch.append(epoch)
-    ax0.plot(x_epoch, record['train_loss'], 'bo-', label='train')
-    ax0.plot(x_epoch, record['test_loss'], 'ro-', label='val')
-    ax1.plot(x_epoch, record['train_err'], 'bo-', label='train')
-    ax1.plot(x_epoch, record['test_err'], 'ro-', label='val')
-    if epoch == 0:
-        ax0.legend()
-        ax1.legend()
-    fig.savefig("train.jpg")
 
 # # lr decay
 # def lr_decay():
