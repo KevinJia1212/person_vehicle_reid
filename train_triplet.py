@@ -24,7 +24,8 @@ parser.add_argument("--no-cuda",action="store_true")
 parser.add_argument("--gpu-id",default=0,type=int)
 parser.add_argument("--lr",default=0.1, type=float)
 parser.add_argument("--interval",'-i',default=5,type=int)
-parser.add_argument('--resume', '-r',action='store_true')
+parser.add_argument('--batch_size', default=512, type=int, help='Batch size for training')
+parser.add_argument('--resume', default=None, type=str, help='Checkpoint state_dict file to resume training from.')
 parser.add_argument('--num_workers', default=0, type=int)
 parser.add_argument('--margin', default=1.2, type=float)
 args = parser.parse_args()
@@ -72,7 +73,7 @@ veri_root = args.veri_dir
 # market_test = Market1501(test_filenames, test_ids, transform=transform_test, dataset_name="Market Test")
 data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 
-trainloader = torch.utils.data.DataLoader(data.train, batch_size=2048, shuffle=True, num_workers=args.num_workers)
+trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 testloader = torch.utils.data.DataLoader(data.test, batch_size=512)
 queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 
@@ -80,29 +81,41 @@ queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 
 # net definition
 num_classes = len(np.unique(data.train.ids))
-start_epoch = 1
+start_epoch = 0
+start_lr = args.lr
+lr_adjust_list = [ 12, 24, 38, 54, 70, 80, 90, 100, 120, 140]
 net = Net(num_classes=num_classes)
-if args.resume:
-    assert os.path.isfile("./checkpoint/ckpt.t7"), "Error: no checkpoint file found!"
-    print('Loading from checkpoint/ckpt.t7')
-    checkpoint = torch.load("./checkpoint/ckpt.t7")
+if args.resume is not None:
+    assert os.path.isfile(args.resume), "Error: no checkpoint file found!"
+    print('Loading from {}'.format(args.resume))
+    checkpoint = torch.load(args.resume)
     # import ipdb; ipdb.set_trace()
     net_dict = checkpoint['net_dict']
     net.load_state_dict(net_dict)
-    best_acc = checkpoint['acc']
+    # best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
+    new_lr_adjust_list = []
+    for step in lr_adjust_list:
+        if start_epoch >= step:
+            start_lr *= 0.1 
+        else:
+            new_lr_adjust_list.append(step)
+    for i in range(len(new_lr_adjust_list)):
+        new_lr_adjust_list[i] -= start_epoch
+    lr_adjust_list = new_lr_adjust_list
+
 net.to(device)
 
 # loss and optimizer
 ce_loss = torch.nn.CrossEntropyLoss()
 trp_loss = triplet.TripletSemihardLoss(args.margin).cuda()
-optimizer = torch.optim.SGD(net.parameters(), args.lr, momentum=0.9, weight_decay=5e-3)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [ 12, 24, 38, 54, 70, 80, 90, 100, 120, 140], gamma=0.1)
+optimizer = torch.optim.SGD(net.parameters(), start_lr, momentum=0.9, weight_decay=5e-3)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_adjust_list, gamma=0.1)
 best_acc = 0.
 
 # train function for each epoch
 def train(epoch):
-    print("Epoch : %d"%(epoch))
+    print("Epoch : %d"%(epoch+1))
     net.is_train = True
     net.train()
     training_loss = 0.
@@ -203,25 +216,37 @@ def eval(epoch):
 
 
 def main():
-    for epoch in range(start_epoch, start_epoch+150):
-        train_loss = train(epoch)
-        scheduler.step()
-        # test_loss, test_err = test(epoch)
-        if epoch % 3 == 0:
-            eval(epoch)
-        if epoch % 50 == 0:
-            print("Saving parameters to checkpoint/")
-            checkpoint = {
-                'net_dict':net.state_dict(),
-                'epoch':epoch,
-            }
-            if not os.path.isdir('checkpoint'):
-                os.mkdir('checkpoint')
-            ckpt_path = "checkpoint/ckpt_" + str(epoch) + ".t7" 
-            torch.save(checkpoint, ckpt_path)
-        # draw_curve(epoch, train_loss, train_err, test_loss, test_err)
-        # if (epoch+1)%10==0:
-        #     lr_decay()
+    try:
+        for epoch in range(start_epoch, start_epoch+150):
+            train_loss = train(epoch)
+            scheduler.step()
+            # test_loss, test_err = test(epoch)
+            if (epoch+1) % 3 == 0:
+                eval(epoch)
+            if (epoch+1) % 50 == 0:
+                print("Saving parameters to checkpoint/")
+                checkpoint = {
+                    'net_dict':net.state_dict(),
+                    'epoch':epoch,
+                }
+                if not os.path.isdir('checkpoint'):
+                    os.mkdir('checkpoint')
+                ckpt_path = "checkpoint/ckpt_" + str(epoch) + ".t7" 
+                torch.save(checkpoint, ckpt_path)
+            # draw_curve(epoch, train_loss, train_err, test_loss, test_err)
+            # if (epoch+1)%10==0:
+            #     lr_decay()
+    except KeyboardInterrupt:
+        print("Stop early. Saving checkpoint")
+        checkpoint = {
+                    'net_dict':net.state_dict(),
+                    'epoch':epoch,
+                }
+        if not os.path.isdir('checkpoint'):
+            os.mkdir('checkpoint')
+        ckpt_path = "checkpoint/ckpt_" + str(epoch) + ".t7" 
+        torch.save(checkpoint, ckpt_path)
+        
 
 
 if __name__ == '__main__':
