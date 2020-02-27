@@ -11,10 +11,11 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.utils.data as data
 import torchvision
+from termcolor import colored
 
 from scipy.spatial.distance import cdist
 # from original_model import Net
-from modified_og64 import Net
+from model64_v1_1 import Net
 from utils import market1501, veri776, util, eval_tools, fused_dataset, triplet, sampler
 
 parser = argparse.ArgumentParser(description="Train on market1501 and veri776")
@@ -23,7 +24,7 @@ parser.add_argument("--veri_dir",default='data',type=str)
 parser.add_argument("--no-cuda",action="store_true")
 parser.add_argument("--gpu-id",default=0,type=int)
 parser.add_argument("--lr",default=0.1, type=float)
-parser.add_argument("--interval",'-i',default=5,type=int)
+parser.add_argument("--interval",'-i',default=20,type=int)
 parser.add_argument('--batch_size', default=512, type=int, help='Batch size for training')
 parser.add_argument('--resume', default=None, type=str, help='Checkpoint state_dict file to resume training from.')
 parser.add_argument('--num_workers', default=0, type=int)
@@ -55,7 +56,7 @@ veri_root = args.veri_dir
 # test_path = os.path.join(dataset_root, "bounding_box_test")
 # query_path = os.path.join(dataset_root, "query")
 
-# id_minibatch = 8
+id_minibatch = 8
 # train_path = os.path.join(veri_root, "image_train")
 # test_path = os.path.join(veri_root, "image_test")
 # query_path = os.path.join(veri_root, "image_query")
@@ -73,7 +74,9 @@ veri_root = args.veri_dir
 # market_test = Market1501(test_filenames, test_ids, transform=transform_test, dataset_name="Market Test")
 data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 
-trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, sampler=sampler.RandomIdentitySampler(data.train, id_minibatch), num_workers=args.num_workers)
+
+# trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 testloader = torch.utils.data.DataLoader(data.test, batch_size=512)
 queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 
@@ -83,7 +86,7 @@ queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 num_classes = len(np.unique(data.train.ids))
 start_epoch = 0
 start_lr = args.lr
-lr_adjust_list = [ 12, 24, 38, 54, 70, 80, 90, 100, 120, 140]
+lr_adjust_list = [ 50, 100, 150, 200, 250, 300, 350, 400, 460]
 net = Net(num_classes=num_classes)
 if args.resume is not None:
     assert os.path.isfile(args.resume), "Error: no checkpoint file found!"
@@ -108,7 +111,8 @@ net.to(device)
 
 # loss and optimizer
 ce_loss = torch.nn.CrossEntropyLoss()
-trp_loss = triplet.TripletSemihardLoss(args.margin).cuda()
+trp_loss = triplet.TripletSemihardLoss(args.margin)
+# trp2_loss = triplet.TripletLoss(args.margin)
 optimizer = torch.optim.SGD(net.parameters(), start_lr, momentum=0.9, weight_decay=5e-3)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_adjust_list, gamma=0.1)
 best_acc = 0.
@@ -119,8 +123,11 @@ def train(epoch):
     net.is_train = True
     net.train()
     training_loss = 0.
+    iding_loss = 0.
+    triing_loss = 0.
     train_loss = 0.
     correct = 0
+    precision = 0.
     total = 0
     interval = args.interval
     start = time.time()
@@ -129,7 +136,9 @@ def train(epoch):
         inputs, labels = inputs.to(device),labels.to(device)
         # print(np.unique(np.asarray(labels.cpu())))
         features, classes = net(inputs)
-        loss = ce_loss(classes, labels)
+        id_loss = ce_loss(classes, labels)
+        tri_loss, prec = trp_loss(features, labels)
+        loss = (id_loss + tri_loss) / 2.0 
 
         # backward
         optimizer.zero_grad()
@@ -138,16 +147,23 @@ def train(epoch):
 
         training_loss += loss.item()
         train_loss += loss.item()
+        iding_loss += id_loss
+        triing_loss += tri_loss
         correct += classes.max(dim=1)[1].eq(labels).sum().item()
+        precision += prec
         total += labels.size(0)
+
 
         # print 
         if (idx+1)%interval == 0:
             end = time.time()
-            print("[progress:{:.1f}%]time:{:.2f}s Loss:{:.5f} Correct:{}/{} Acc:[{:.3f}%] lr:{:.2g}".format(
-                100.*(idx+1)/len(trainloader), end-start, training_loss/interval,correct, total, 100.*correct/total, scheduler.get_lr()[0]
+            print("[progress:{:.1f}%]time:{:.2f}s TotalLoss:{:.5f} id_loss:{:.5f} tri_loss:{:.5f} Correct:{}/{} Acc:[{:.3f}%] Prec:[{:.3f}%] lr:{:.2g}".format(
+                100.*(idx+1)/len(trainloader), end-start, training_loss/interval, iding_loss/interval, triing_loss/interval, correct, total, 100.*correct/total, 100.*precision/interval, scheduler.get_lr()[0]
             ))
             training_loss = 0.
+            iding_loss = 0.
+            triing_loss = 0.
+            precision = 0.
             start = time.time()
     
     return train_loss/len(trainloader)
@@ -212,18 +228,18 @@ def eval(epoch):
             first_match_break=True)
 
     m_ap = eval_tools.mean_ap(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras)
-    print('epoch[%d]: mAP=%f, r@1=%f, r@3=%f, r@5=%f, r@10=%f' % (epoch + 1, m_ap, r[0], r[2], r[4], r[9]))
+    print(colored('epoch[%d]: mAP=%f, r@1=%f, r@3=%f, r@5=%f, r@10=%f' % (epoch + 1, m_ap, r[0], r[2], r[4], r[9]), "yellow"))
 
 
 def main():
     try:
-        for epoch in range(start_epoch, start_epoch+150):
+        for epoch in range(start_epoch, start_epoch+400):
             train_loss = train(epoch)
             scheduler.step()
             # test_loss, test_err = test(epoch)
-            if (epoch+1) % 3 == 0:
+            if (epoch+1) % 10 == 0:
                 eval(epoch)
-            if (epoch+1) % 50 == 0:
+            if (epoch+1) % 200 == 0:
                 print("Saving parameters to checkpoint/")
                 checkpoint = {
                     'net_dict':net.state_dict(),
@@ -231,7 +247,7 @@ def main():
                 }
                 if not os.path.isdir('checkpoint'):
                     os.mkdir('checkpoint')
-                ckpt_path = "checkpoint/ckpt_" + str(epoch) + ".t7" 
+                ckpt_path = "checkpoint/tri_ckpt_" + str(epoch) + ".t7" 
                 torch.save(checkpoint, ckpt_path)
             # draw_curve(epoch, train_loss, train_err, test_loss, test_err)
             # if (epoch+1)%10==0:
@@ -244,7 +260,7 @@ def main():
                 }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        ckpt_path = "checkpoint/ckpt_" + str(epoch) + ".t7" 
+        ckpt_path = "checkpoint/tri_ckpt_" + str(epoch) + ".t7" 
         torch.save(checkpoint, ckpt_path)
         
 
