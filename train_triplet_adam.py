@@ -84,7 +84,7 @@ queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 num_classes = len(np.unique(data.train.ids))
 start_epoch = 0
 start_lr = args.lr
-# lr_adjust_list = [ 50, 100, 150, 200, 250, 300, 350, 400, 460]
+lr_adjust_list = [ 249, 320, 400, 460]
 net = Net(num_classes=num_classes)
 if args.resume is not None:
     assert os.path.isfile(args.resume), "Error: no checkpoint file found!"
@@ -95,15 +95,15 @@ if args.resume is not None:
     net.load_state_dict(net_dict)
     # best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
-    # new_lr_adjust_list = []
-    # for step in lr_adjust_list:
-    #     if start_epoch >= step:
-    #         start_lr *= 0.1 
-    #     else:
-    #         new_lr_adjust_list.append(step)
-    # for i in range(len(new_lr_adjust_list)):
-    #     new_lr_adjust_list[i] -= start_epoch
-    # lr_adjust_list = new_lr_adjust_list
+    new_lr_adjust_list = []
+    for step in lr_adjust_list:
+        if start_epoch >= step:
+            start_lr *= 0.1 
+        else:
+            new_lr_adjust_list.append(step)
+    for i in range(len(new_lr_adjust_list)):
+        new_lr_adjust_list[i] -= start_epoch
+    lr_adjust_list = new_lr_adjust_list
 
 net.to(device)
 
@@ -113,7 +113,7 @@ trp_loss = triplet.TripletSemihardLoss(args.margin)
 # trp2_loss = triplet.TripletLoss(args.margin)
 optimizer = torch.optim.Adam(net.parameters(), lr=start_lr, betas=(0.9, 0.99), weight_decay=0.0005)
 # optimizer = torch.optim.SGD(net.parameters(), start_lr, momentum=0.9, weight_decay=5e-3)
-# scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_adjust_list, gamma=0.1)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_adjust_list, gamma=0.1)
 best_acc = 0.
 
 # train function for each epoch
@@ -195,7 +195,7 @@ def main():
     try:
         for epoch in range(start_epoch, start_epoch+400):
             train_loss = train(epoch)
-            # scheduler.step()
+            scheduler.step()
             # test_loss, test_err = test(epoch)
             if (epoch+1) % 10 == 0:
                 eval(epoch)
