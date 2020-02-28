@@ -206,11 +206,8 @@ def main():
                 }
                 if not os.path.isdir('checkpoint'):
                     os.mkdir('checkpoint')
-                ckpt_path = "checkpoint/tri_ckpt_" + str(epoch) + ".t7" 
+                ckpt_path = "checkpoint/tri_ckpt_" + str(epoch) + ".t7"
                 torch.save(checkpoint, ckpt_path)
-            # draw_curve(epoch, train_loss, train_err, test_loss, test_err)
-            # if (epoch+1)%10==0:
-            #     lr_decay()
     except KeyboardInterrupt:
         print("Stop early. Saving checkpoint")
         checkpoint = {
