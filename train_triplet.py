@@ -15,7 +15,7 @@ from termcolor import colored
 
 from scipy.spatial.distance import cdist
 # from original_model import Net
-from model64_v1_1 import Net
+from model64_v1_2 import Net
 from utils import market1501, veri776, util, eval_tools, fused_dataset, triplet, sampler
 
 parser = argparse.ArgumentParser(description="Train on market1501 and veri776")
@@ -75,8 +75,6 @@ id_minibatch = 8
 data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 
 trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, sampler=sampler.RandomIdentitySampler(data.train, id_minibatch), num_workers=args.num_workers)
-
-# trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 testloader = torch.utils.data.DataLoader(data.test, batch_size=512)
 queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 
@@ -168,45 +166,6 @@ def train(epoch):
     
     return train_loss/len(trainloader)
 
-def test(epoch):
-    global best_acc
-    net.eval()
-    test_loss = 0.
-    correct = 0
-    total = 0
-    start = time.time()
-    with torch.no_grad():
-        for idx, (inputs, labels) in enumerate(testloader):
-            inputs, labels = inputs.to(device), labels.to(device)
-            features, classes = net(inputs)
-            loss = ce_loss(classes, labels)
-
-            test_loss += loss.item()
-            correct += outputs.max(dim=1)[1].eq(labels).sum().item()
-            total += labels.size(0)
-        
-        print("Testing ...")
-        end = time.time()
-        print("[progress:{:.1f}%]time:{:.2f}s Loss:{:.5f} Correct:{}/{} Acc:{:.3f}%".format(
-                100.*(idx+1)/len(testloader), end-start, test_loss/len(testloader), correct, total, 100.*correct/total
-            ))
-
-    # saving checkpoint
-    acc = 100.*correct/total
-    if acc > best_acc:
-        best_acc = acc
-        print("Saving parameters to checkpoint/ckpt.t7")
-        checkpoint = {
-            'net_dict':net.state_dict(),
-            'acc':acc,
-            'epoch':epoch,
-        }
-        if not os.path.isdir('checkpoint'):
-            os.mkdir('checkpoint')
-        torch.save(checkpoint, './checkpoint/ckpt.t7')
-
-    return test_loss/len(testloader), 1.- correct/total
-
 # # lr decay
 # def lr_decay():
 #     global optimizer
@@ -239,7 +198,7 @@ def main():
             # test_loss, test_err = test(epoch)
             if (epoch+1) % 10 == 0:
                 eval(epoch)
-            if (epoch+1) % 200 == 0:
+            if (epoch+1) % 100 == 0:
                 print("Saving parameters to checkpoint/")
                 checkpoint = {
                     'net_dict':net.state_dict(),
