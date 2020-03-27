@@ -24,7 +24,7 @@ parser.add_argument("--veri_dir",default='data',type=str)
 parser.add_argument("--no-cuda",action="store_true")
 parser.add_argument("--gpu-id",default=0,type=int)
 parser.add_argument('--batch_size', default=512, type=int, help='Batch size for test')
-parser.add_argument('--num_workers', default=4, type=int, help='threads to load data')
+parser.add_argument('--num_workers', default=0, type=int, help='threads to load data')
 parser.add_argument('--checkpoint', default=None, type=str, help='Checkpoint state_dict file to evaluate.')
 args = parser.parse_args()
 
@@ -47,17 +47,18 @@ transform_test = torchvision.transforms.Compose([
 ])
 
 # data loading
+print('Loading......')
 market_root = args.market_dir
 veri_root = args.veri_dir
 data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 testloader = torch.utils.data.DataLoader(data.test, batch_size=args.batch_size, num_workers=args.num_workers)
-queryloader = torch.utils.data.DataLoader(data.query, batch_size=args.batch_size, ,num_workers=args.num_workers)
+queryloader = torch.utils.data.DataLoader(data.query, batch_size=args.batch_size, num_workers=args.num_workers)
 
 # net definition
 num_classes = len(np.unique(data.train.ids))
 net = Net(num_classes=num_classes)
 assert os.path.isfile(args.checkpoint), "Error: no checkpoint file found!"
-print('Loading......')
+
 checkpoint = torch.load(args.checkpoint)
 net_dict = checkpoint['net_dict']
 # for key in list(net_dict.keys()):
@@ -65,6 +66,7 @@ net_dict = checkpoint['net_dict']
 #         del net_dict[key]
 net.load_state_dict(net_dict)
 net.to(device)
+print("Done")
 
 def eval():
     net.is_train = False
@@ -77,45 +79,11 @@ def eval():
     r = eval_tools.cmc(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras,
             separate_camera_set=False,
             single_gallery_shot=False,
-            first_match_break=True)
+            first_match_break=True,
+            same_cam_valid=True)
 
-    m_ap = eval_tools.mean_ap(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras)
+    m_ap = eval_tools.mean_ap(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras, same_cam_valid=True)
     print(colored('model:%s  mAP=%f, r@1=%f, r@3=%f, r@5=%f, r@10=%f' % (os.path.basename(args.checkpoint), m_ap, r[0], r[2], r[4], r[9]), "red"))
-
-    # test_loss = 0.
-    # correct = 0
-    # total = 0
-    # with torch.no_grad():
-    #     for idx, (inputs, labels) in enumerate(queryloader):
-    #         inputs, labels = inputs.to(device), labels.to(device)
-    #         features = net(inputs)
-    #         loss = ce_loss(classes, labels)
-
-    #         test_loss += loss.item()
-    #         correct += outputs.max(dim=1)[1].eq(labels).sum().item()
-    #         total += labels.size(0)
-        
-    #     print("Testing ...")
-    #     end = time.time()
-    #     print("[progress:{:.1f}%]time:{:.2f}s Loss:{:.5f} Correct:{}/{} Acc:{:.3f}%".format(
-    #             100.*(idx+1)/len(testloader), end-start, test_loss/len(testloader), correct, total, 100.*correct/total
-    #         ))
-
-    # # saving checkpoint
-    # acc = 100.*correct/total
-    # if acc > best_acc:
-    #     best_acc = acc
-    #     print("Saving parameters to checkpoint/ckpt.t7")
-    #     checkpoint = {
-    #         'net_dict':net.state_dict(),
-    #         'acc':acc,
-    #         'epoch':epoch,
-    #     }
-    #     if not os.path.isdir('checkpoint'):
-    #         os.mkdir('checkpoint')
-    #     torch.save(checkpoint, './checkpoint/ckpt.t7')
-
-    # return test_loss/len(testloader), 1.- correct/total
             
 
 

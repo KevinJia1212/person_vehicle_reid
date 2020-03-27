@@ -1,0 +1,50 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        // {
+        //     "name": "Python: train_triplet.py",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/train_triplet.py",
+        //     "console": "integratedTerminal",
+        //     "args": ["--market_dir=/home/kun/Market-1501-v15.09.15", "--veri_dir=/home/kun/VeRi",
+        //         "--interval=5", "--num_workers=8"
+        //         //  "--resume=/home/kun/yolo_deep_sort_pytorch-master/deep_sort/person_vehicle_reid/checkpoint/ckpt_50.t7"]
+        //     ]    
+        // }
+        // {
+        //     "name": "Python: test.py",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/test.py",
+        //     "console": "integratedTerminal",
+        //     "args": ["--market_dir=/home/kun/Market-1501-v15.09.15", "--veri_dir=/home/kun/VeRi",
+        //          "--checkpoint=checkpoint/v1_2_ckpt_99.t7"]
+            
+        // }
+        // {
+        //     "name": "Python: mots_tunetrain.py",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${workspaceFolder}/mots_tunetrain.py",
+        //     "console": "integratedTerminal",
+        //     "args": ["--mots_dir=/home/kun/KITTI_MOTS/box_reid",
+        //         "--interval=5", "--num_workers=0", "--resume=checkpoint/tri_ckpt_449.t7",
+        //         "--init_from=pretrain"
+        //     ]    
+        // }
+        {
+            "name": "Python: mots_test.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/mots_test.py",
+            "console": "integratedTerminal",
+            "args": ["--mots_dir=/home/kun/KITTI_MOTS/box_reid", "--mask=True",
+                        "--num_workers=0", "--checkpoint=checkpoint/tri_ckpt_449.t7"
+            ]    
+        }
+    ]
+}

@@ -16,7 +16,8 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         query_cams=None, gallery_cams=None, topk=100,
         separate_camera_set=False,
         single_gallery_shot=False,
-        first_match_break=False):
+        first_match_break=False,
+        same_cam_valid=False):
     m, n = distmat.shape
     # Fill up default values
     if query_ids is None:
@@ -39,9 +40,12 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
     ret = np.zeros(topk)
     num_valid_queries = 0
     for i in range(m):
-        # Filter out the same id and same camera
-        valid = ((gallery_ids[indices[i]] != query_ids[i]) |
-                 (gallery_cams[indices[i]] != query_cams[i]))
+        # Filter out the instances that have the same id and same camera with each query
+        if same_cam_valid:
+            valid = np.ones(n).astype(bool)
+        else:
+            valid = ((gallery_ids[indices[i]] != query_ids[i]) |
+                    (gallery_cams[indices[i]] != query_cams[i]))
         if separate_camera_set:
             # Filter out samples from same camera
             valid &= (gallery_cams[indices[i]] != query_cams[i])
@@ -62,7 +66,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
                 sampled = (valid & _unique_sample(ids_dict, len(valid)))
                 index = np.nonzero(matches[i, sampled])[0]
             else:
-                index = np.nonzero(matches[i, valid])[0]
+                index = np.nonzero(matches[i, valid])[0]    # id matched but it is a negative match
             delta = 1. / (len(index) * repeat)
             for j, k in enumerate(index):
                 if k - j >= topk:
@@ -78,7 +82,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
 
 
 def mean_ap(distmat, query_ids=None, gallery_ids=None,
-            query_cams=None, gallery_cams=None):
+            query_cams=None, gallery_cams=None, same_cam_valid=False):
     m, n = distmat.shape
     # Fill up default values
     if query_ids is None:
@@ -101,8 +105,11 @@ def mean_ap(distmat, query_ids=None, gallery_ids=None,
     aps = []
     for i in range(m):
         # Filter out the same id and same camera
-        valid = ((gallery_ids[indices[i]] != query_ids[i]) |
-                 (gallery_cams[indices[i]] != query_cams[i]))
+        if same_cam_valid:
+            valid = np.ones(n).astype(bool)
+        else:
+            valid = ((gallery_ids[indices[i]] != query_ids[i]) |
+                    (gallery_cams[indices[i]] != query_cams[i]))
         y_true = matches[i, valid]
         y_score = -distmat[i][indices[i]][valid]
         if not np.any(y_true):
