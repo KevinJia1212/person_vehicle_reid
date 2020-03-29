@@ -74,7 +74,8 @@ id_minibatch = 8
 # market_test = Market1501(test_filenames, test_ids, transform=transform_test, dataset_name="Market Test")
 data = fused_dataset.Fused_Dataset(market_root, veri_root, transform_train, transform_test)
 
-trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, sampler=sampler.RandomIdentitySampler(data.train, id_minibatch), num_workers=args.num_workers)
+# trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, sampler=sampler.RandomIdentitySampler(data.train, id_minibatch), num_workers=args.num_workers)
+trainloader = torch.utils.data.DataLoader(data.train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 testloader = torch.utils.data.DataLoader(data.test, batch_size=512)
 queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 
@@ -109,7 +110,7 @@ net.to(device)
 
 # loss and optimizer
 ce_loss = torch.nn.CrossEntropyLoss()
-trp_loss = triplet.TripletSemihardLoss(args.margin)
+# trp_loss = triplet.TripletSemihardLoss(args.margin)
 # trp2_loss = triplet.TripletLoss(args.margin)
 optimizer = torch.optim.Adam(net.parameters(), lr=start_lr, betas=(0.9, 0.99), weight_decay=0.0005)
 # optimizer = torch.optim.SGD(net.parameters(), start_lr, momentum=0.9, weight_decay=5e-3)
@@ -123,10 +124,10 @@ def train(epoch):
     net.train()
     training_loss = 0.
     iding_loss = 0.
-    triing_loss = 0.
+    # triing_loss = 0.
     train_loss = 0.
     correct = 0
-    precision = 0.
+    # precision = 0.
     total = 0
     interval = args.interval
     start = time.time()
@@ -136,8 +137,9 @@ def train(epoch):
         # print(np.unique(np.asarray(labels.cpu())))
         features, classes = net(inputs)
         id_loss = ce_loss(classes, labels)
-        tri_loss, prec = trp_loss(features, labels)
-        loss = id_loss + tri_loss
+        # tri_loss, prec = trp_loss(features, labels)
+        # loss = id_loss + tri_loss
+        loss = id_loss
 
         # backward
         optimizer.zero_grad()
@@ -147,22 +149,25 @@ def train(epoch):
         training_loss += loss.item()
         train_loss += loss.item()
         iding_loss += id_loss
-        triing_loss += tri_loss
+        # triing_loss += tri_loss
         correct += classes.max(dim=1)[1].eq(labels).sum().item()
-        precision += prec
+        # precision += prec
         total += labels.size(0)
 
 
         # print 
         if (idx+1)%interval == 0:
             end = time.time()
-            print("[progress:{:.1f}%]time:{:.2f}s TotalLoss:{:.5f} id_loss:{:.5f} tri_loss:{:.5f} Correct:{}/{} Acc:[{:.3f}%] Prec:[{:.3f}%] lr:{:.2g}".format(
-                100.*(idx+1)/len(trainloader), end-start, training_loss/interval, iding_loss/interval, triing_loss/interval, correct, total, 100.*correct/total, 100.*precision/interval, optimizer.param_groups[0]['lr']
+            # print("[progress:{:.1f}%]time:{:.2f}s TotalLoss:{:.5f} id_loss:{:.5f} tri_loss:{:.5f} Correct:{}/{} Acc:[{:.3f}%] Prec:[{:.3f}%] lr:{:.2g}".format(
+            #     100.*(idx+1)/len(trainloader), end-start, training_loss/interval, iding_loss/interval, triing_loss/interval, correct, total, 100.*correct/total, 100.*precision/interval, optimizer.param_groups[0]['lr']
+            # ))
+            print("[progress:{:.1f}%]time:{:.2f}s TotalLoss:{:.5f} id_loss:{:.5f} Correct:{}/{} Acc:[{:.3f}%]  lr:{:.2g}".format(
+                100.*(idx+1)/len(trainloader), end-start, training_loss/interval, iding_loss/interval,  correct, total, 100.*correct/total,  optimizer.param_groups[0]['lr']
             ))
             training_loss = 0.
             iding_loss = 0.
             triing_loss = 0.
-            precision = 0.
+            # precision = 0.
             start = time.time()
     
     return train_loss/len(trainloader)
@@ -185,9 +190,10 @@ def eval(epoch):
     r = eval_tools.cmc(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras,
             separate_camera_set=False,
             single_gallery_shot=False,
-            first_match_break=True)
+            first_match_break=True,
+            same_cam_valid=True)
 
-    m_ap = eval_tools.mean_ap(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras)
+    m_ap = eval_tools.mean_ap(dist, data.query.ids, data.test.ids, data.query.cameras, data.test.cameras, same_cam_valid=True)
     print(colored('epoch[%d]: mAP=%f, r@1=%f, r@3=%f, r@5=%f, r@10=%f' % (epoch + 1, m_ap, r[0], r[2], r[4], r[9]), "yellow"))
 
 
@@ -197,7 +203,7 @@ def main():
             train_loss = train(epoch)
             scheduler.step()
             # test_loss, test_err = test(epoch)
-            if (epoch+1) % 10 == 0:
+            if (epoch+1) % 2 == 0:
                 eval(epoch)
             if (epoch+1) % 50 == 0:
                 print("Saving parameters to checkpoint/")
