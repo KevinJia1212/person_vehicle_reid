@@ -15,7 +15,7 @@ from termcolor import colored
 
 from scipy.spatial.distance import cdist
 # from original_model import Net
-from model64_v1_2 import Net
+from original_model64 import Net
 from utils import market1501, veri776, util, eval_tools, fused_dataset, triplet, sampler
 
 parser = argparse.ArgumentParser(description="Train on market1501 and veri776")
@@ -84,7 +84,7 @@ queryloader = torch.utils.data.DataLoader(data.query, batch_size=512)
 num_classes = len(np.unique(data.train.ids))
 start_epoch = 0
 start_lr = args.lr
-lr_adjust_list = [ 249, 320, 400, 460]
+lr_adjust_list = [100, 249, 320, 400, 460]
 net = Net(num_classes=num_classes)
 if args.resume is not None:
     assert os.path.isfile(args.resume), "Error: no checkpoint file found!"
@@ -137,7 +137,7 @@ def train(epoch):
         features, classes = net(inputs)
         id_loss = ce_loss(classes, labels)
         tri_loss, prec = trp_loss(features, labels)
-        loss = (id_loss + tri_loss) / 2.0 
+        loss = id_loss + tri_loss
 
         # backward
         optimizer.zero_grad()
@@ -193,7 +193,7 @@ def eval(epoch):
 
 def main():
     try:
-        for epoch in range(start_epoch, start_epoch+400):
+        for epoch in range(start_epoch, start_epoch+500):
             train_loss = train(epoch)
             scheduler.step()
             # test_loss, test_err = test(epoch)
